@@ -109,6 +109,23 @@ export default function LogWastePage() {
     });
   }, [router]);
 
+  // Supabase syncs sign-in/sign-out across every tab of the same origin
+  // (e.g. an admin checking the dashboard in another tab). Without this,
+  // this tab's session can go stale underneath it — bounce back through
+  // /login so the right identity loads fresh.
+  useEffect(() => {
+    if (!profile) return;
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!session || session.user.id !== profile.id) {
+        router.replace("/login");
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [profile, router]);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!profile) return;

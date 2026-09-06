@@ -227,6 +227,25 @@ export default function DashboardPage() {
     });
   }, [router, loadData]);
 
+  // Supabase syncs sign-in/sign-out across every tab of the same origin
+  // (e.g. testing as a student in another tab while this one is open as
+  // admin). Without this, this tab's session goes stale underneath it —
+  // it keeps showing "admin1@..." while its queries silently start
+  // running as whoever is now signed in elsewhere, or as no one at all.
+  // Bounce back through /login so the right identity/role loads fresh.
+  useEffect(() => {
+    if (!profile) return; // still loading the initial session — nothing to compare against yet
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!session || session.user.id !== profile.id) {
+        router.replace("/login");
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [profile, router]);
+
   // Live-update as new waste records or recommendations (e.g. from the
   // Python analysis engine, which writes via the service role key and
   // never touches the client) come in for this hostel.
@@ -243,7 +262,8 @@ export default function DashboardPage() {
           table: "waste_records",
           filter: `hostel_id=eq.${profile.hostel_id}`,
         },
-        () => {
+        (payload) => {
+          console.log("[realtime] waste_records event received", payload);
           loadData(profile.hostel_id).catch(() => {});
         },
       )
@@ -255,11 +275,12 @@ export default function DashboardPage() {
           table: "recommendations",
           filter: `hostel_id=eq.${profile.hostel_id}`,
         },
-        () => {
+        (payload) => {
+          console.log("[realtime] recommendations event received", payload);
           loadData(profile.hostel_id).catch(() => {});
         },
       )
-      .subscribe();
+      .subscribe((status, err) => console.log("[realtime] channel status", status, err));
 
     return () => {
       supabase.removeChannel(channel);
