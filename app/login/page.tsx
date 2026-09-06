@@ -73,12 +73,16 @@ export default function LoginPage() {
         }
         // ponytail: Supabase has an open platform incident where
         // PostgREST's schema cache doesn't always know about a very
-        // recently added column (`is_test`) yet — fall back to showing
-        // every hostel rather than breaking signup entirely over it.
+        // recently added column (`is_test`) yet. Fall back to filtering
+        // by the name the synthetic hostel is seeded under (see
+        // 20260906000600_hostels_is_test.sql) instead of dropping the
+        // filter entirely — the whole point of is_test was to keep this
+        // out of the signup picker, so the fallback has to keep doing that.
         if (error?.code === "42703" || error?.code === "PGRST204") {
           supabase
             .from("hostels")
             .select("id,name")
+            .neq("name", "Synthetic Test Hostel")
             .order("name")
             .then(({ data, error }) => {
               if (!error && data) setHostels(data);

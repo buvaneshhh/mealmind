@@ -1,180 +1,22 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
-import { animate, motion, useMotionValue, useReducedMotion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { supabase } from "@/lib/supabase";
 import { getCurrentProfile, type Profile } from "@/lib/profile";
 import AppHeader from "@/app/components/AppHeader";
 import SpotlightCard from "@/app/components/SpotlightCard";
+import DashboardTabs, { type DashboardTab } from "./components/DashboardTabs";
+import OverviewCards from "./components/OverviewCards";
+import WasteLogSection from "./components/WasteLogSection";
+import RecommendationsSection from "./components/RecommendationsSection";
+import WasteGraphSection from "./components/WasteGraphSection";
+import { fetchRecommendations, fetchWasteRecordCount, fetchWasteRecords } from "./data";
+import { buildChartPoints } from "./utils";
+import type { Recommendation, WasteRecord } from "./types";
 
 const DAYS = 14;
-
-type WasteRecord = {
-  timestamp: string;
-  kitchen_waste_kg: number;
-  plate_waste_kg: number;
-  compliance_met: boolean | null;
-};
-
-type Recommendation = {
-  id: string;
-  meal_type: string;
-  message: string;
-  suggested_adjustment_pct: number | null;
-  generated_at: string;
-  method: "rule_based" | "regression" | null;
-};
-
-type ChartPoint = { date: string; totalKg: number };
-
-function buildChartPoints(records: WasteRecord[]): ChartPoint[] {
-  const buckets = new Map<string, number>();
-  const today = new Date();
-  for (let i = DAYS - 1; i >= 0; i--) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - i);
-    buckets.set(d.toISOString().slice(0, 10), 0);
-  }
-
-  for (const r of records) {
-    const key = r.timestamp.slice(0, 10);
-    if (buckets.has(key)) {
-      buckets.set(key, buckets.get(key)! + r.kitchen_waste_kg + r.plate_waste_kg);
-    }
-  }
-
-  return Array.from(buckets.entries()).map(([date, totalKg]) => ({
-    date: date.slice(5), // MM-DD
-    totalKg: Math.round(totalKg * 100) / 100,
-  }));
-}
-
-const RECOMMENDATION_COLUMNS = "id,meal_type,message,suggested_adjustment_pct,generated_at,method";
-const RECOMMENDATION_COLUMNS_FALLBACK = "id,meal_type,message,suggested_adjustment_pct,generated_at";
-// ponytail: Supabase has an open platform incident where PostgREST's
-// schema cache doesn't always know about a very recently added column
-// (here: `method`) yet — fall back to the columns that have always
-// worked rather than breaking the whole recommendations panel over it.
-const SCHEMA_CACHE_ERROR_CODES = ["42703", "PGRST204"];
-
-async function fetchRecommendations(hostelId: string): Promise<Recommendation[]> {
-  const res = await supabase
-    .from("recommendations")
-    .select(RECOMMENDATION_COLUMNS)
-    .eq("hostel_id", hostelId)
-    .order("generated_at", { ascending: false });
-
-  if (res.error && SCHEMA_CACHE_ERROR_CODES.includes(res.error.code)) {
-    const fallback = await supabase
-      .from("recommendations")
-      .select(RECOMMENDATION_COLUMNS_FALLBACK)
-      .eq("hostel_id", hostelId)
-      .order("generated_at", { ascending: false });
-    if (fallback.error) throw fallback.error;
-    return fallback.data.map((r) => ({ ...r, method: null })) as Recommendation[];
-  }
-
-  if (res.error) throw res.error;
-  return res.data as Recommendation[];
-}
-
-function AnimatedNumber({ value, suffix = "" }: { value: number; suffix?: string }) {
-  const reduceMotion = useReducedMotion();
-  const [display, setDisplay] = useState(0);
-  const motionVal = useMotionValue(0);
-
-  useEffect(() => {
-    if (reduceMotion) return;
-    const controls = animate(motionVal, value, {
-      duration: 0.8,
-      ease: "easeOut",
-      onUpdate: (v) => setDisplay(Math.round(v)),
-    });
-    return controls.stop;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value, reduceMotion]);
-
-  return (
-    <>
-      {reduceMotion ? value : display}
-      {suffix}
-    </>
-  );
-}
-
-function RuleBasedIcon() {
-  return (
-    <svg viewBox="0 0 20 20" fill="none" className="h-3 w-3">
-      <path
-        d="M4 6h12M4 10h8M4 14h5"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function RegressionIcon() {
-  return (
-    <svg viewBox="0 0 20 20" fill="none" className="h-3 w-3">
-      <path
-        d="M3 14l4.5-5 3.5 3 5.5-7"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path d="M13 5h4v4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function MethodBadge({ method }: { method: Recommendation["method"] }) {
-  if (!method) return null;
-  const isRegression = method === "regression";
-  return (
-    <span
-      className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${
-        isRegression
-          ? "bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300"
-          : "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
-      }`}
-    >
-      {isRegression ? <RegressionIcon /> : <RuleBasedIcon />}
-      {isRegression ? "Regression" : "Rule-based"}
-    </span>
-  );
-}
-
-function ChartSkeleton() {
-  return (
-    <div className="flex h-[280px] flex-col justify-end gap-2 px-2 pb-2">
-      <div className="skeleton h-full w-full rounded-md" />
-    </div>
-  );
-}
-
-function RecommendationsSkeleton() {
-  return (
-    <div className="flex flex-col gap-3">
-      {[0, 1, 2].map((i) => (
-        <div key={i} className="skeleton h-16 w-full rounded-md" />
-      ))}
-    </div>
-  );
-}
-
 const cardHover = "transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-md";
 
 export default function DashboardPage() {
@@ -182,29 +24,49 @@ export default function DashboardPage() {
   const reduceMotion = useReducedMotion();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
+  const [tab, setTab] = useState<DashboardTab>("log");
 
   const [records, setRecords] = useState<WasteRecord[] | null>(null);
+  const [recordsError, setRecordsError] = useState<string | null>(null);
   const [recommendations, setRecommendations] = useState<Recommendation[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [recommendationsError, setRecommendationsError] = useState<string | null>(null);
+  const [totalRecordCount, setTotalRecordCount] = useState<number | null>(null);
 
+  // Each source tracks its own error so one failing query never blocks the
+  // others, and each section can tell "genuinely empty" apart from "failed
+  // to load" instead of hanging on a loading state forever.
   const loadData = useCallback(async (hostelId: string) => {
     const since = new Date();
     since.setDate(since.getDate() - (DAYS - 1));
+    const sinceIso = since.toISOString();
 
-    const [recordsRes, recommendations] = await Promise.all([
-      supabase
-        .from("waste_records")
-        .select("timestamp,kitchen_waste_kg,plate_waste_kg,compliance_met")
-        .eq("hostel_id", hostelId)
-        .gte("timestamp", since.toISOString())
-        .order("timestamp", { ascending: true }),
+    const [recordsResult, recommendationsResult, countResult] = await Promise.allSettled([
+      fetchWasteRecords(hostelId, sinceIso),
       fetchRecommendations(hostelId),
+      fetchWasteRecordCount(hostelId),
     ]);
 
-    if (recordsRes.error) throw recordsRes.error;
+    if (recordsResult.status === "fulfilled") {
+      setRecords(recordsResult.value);
+      setRecordsError(null);
+    } else {
+      console.error("[dashboard] failed to load waste records", recordsResult.reason);
+      setRecordsError("Unable to load waste records. Please try again.");
+    }
 
-    setRecords(recordsRes.data as WasteRecord[]);
-    setRecommendations(recommendations);
+    if (recommendationsResult.status === "fulfilled") {
+      setRecommendations(recommendationsResult.value);
+      setRecommendationsError(null);
+    } else {
+      console.error("[dashboard] failed to load recommendations", recommendationsResult.reason);
+      setRecommendationsError("Unable to load recommendations. Please try again.");
+    }
+
+    if (countResult.status === "fulfilled") {
+      setTotalRecordCount(countResult.value);
+    } else {
+      console.error("[dashboard] failed to load waste record count", countResult.reason);
+    }
   }, []);
 
   useEffect(() => {
@@ -219,11 +81,7 @@ export default function DashboardPage() {
       }
       setProfile(p);
       setCheckingAuth(false);
-      try {
-        await loadData(p.hostel_id);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load dashboard data.");
-      }
+      loadData(p.hostel_id);
     });
   }, [router, loadData]);
 
@@ -264,7 +122,7 @@ export default function DashboardPage() {
         },
         (payload) => {
           console.log("[realtime] waste_records event received", payload);
-          loadData(profile.hostel_id).catch(() => {});
+          loadData(profile.hostel_id);
         },
       )
       .on(
@@ -277,7 +135,7 @@ export default function DashboardPage() {
         },
         (payload) => {
           console.log("[realtime] recommendations event received", payload);
-          loadData(profile.hostel_id).catch(() => {});
+          loadData(profile.hostel_id);
         },
       )
       .subscribe((status, err) => console.log("[realtime] channel status", status, err));
@@ -287,146 +145,46 @@ export default function DashboardPage() {
     };
   }, [profile, loadData]);
 
+  const chartData = useMemo(() => (records ? buildChartPoints(records, DAYS) : []), [records]);
+
   if (checkingAuth) {
     return <p className="p-6 text-sm text-zinc-500">Loading…</p>;
   }
-
-  const chartData = records ? buildChartPoints(records) : [];
-  const complianceRated = records?.filter((r) => r.compliance_met !== null) ?? [];
-  const complianceRate =
-    complianceRated.length > 0
-      ? Math.round(
-          (complianceRated.filter((r) => r.compliance_met).length / complianceRated.length) * 100,
-        )
-      : null;
 
   return (
     <div className="flex flex-1 flex-col">
       <AppHeader title="Dashboard" subtitle={profile?.email} />
 
-      <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-6 px-4 py-8">
-        {error && (
-          <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">
-            {error}
-          </p>
-        )}
+      <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 px-4 py-8">
+        <OverviewCards
+          records={records}
+          recordsError={recordsError}
+          totalRecordCount={totalRecordCount}
+          recommendations={recommendations}
+        />
+
+        <DashboardTabs active={tab} onChange={setTab} />
 
         <motion.div
-          initial={reduceMotion ? undefined : { opacity: 0, y: 12 }}
+          key={tab}
+          initial={reduceMotion ? undefined : { opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, ease: "easeOut" }}
+          transition={{ duration: 0.3, ease: "easeOut" }}
         >
-        <SpotlightCard className={`rounded-xl p-4 ${cardHover}`} glowColor="rgba(34, 197, 94, 0.3)">
-          <h2 className="mb-4 text-sm font-semibold text-zinc-600 dark:text-zinc-400">
-            Total waste (kg) — last {DAYS} days
-          </h2>
-          {records === null ? (
-            <ChartSkeleton />
-          ) : records.length === 0 ? (
-            <p className="py-16 text-center text-sm text-zinc-500">
-              No waste records yet for the last {DAYS} days.
-            </p>
-          ) : (
-            <ResponsiveContainer width="100%" height={280}>
-              <AreaChart data={chartData}>
-                <defs>
-                  <linearGradient id="wasteFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#16a34a" stopOpacity={0.45} />
-                    <stop offset="95%" stopColor="#16a34a" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-                <XAxis dataKey="date" fontSize={12} />
-                <YAxis fontSize={12} width={40} />
-                <Tooltip />
-                <Area
-                  type="monotone"
-                  dataKey="totalKg"
-                  stroke="#16a34a"
-                  strokeWidth={2}
-                  fill="url(#wasteFill)"
-                  dot={false}
-                  isAnimationActive={!reduceMotion}
-                  animationDuration={900}
-                  animationEasing="ease-out"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          )}
-        </SpotlightCard>
-        </motion.div>
-
-        <motion.div
-          initial={reduceMotion ? undefined : { opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.05, ease: "easeOut" }}
-        >
-        <SpotlightCard className={`rounded-xl p-4 ${cardHover}`} glowColor="rgba(34, 197, 94, 0.3)">
-          <h2 className="mb-2 text-sm font-semibold text-zinc-600 dark:text-zinc-400">
-            Recommendation compliance rate
-          </h2>
-          <p className="text-3xl font-semibold">
-            {complianceRate === null ? (
-              <span className="text-base font-normal text-zinc-500">No compliance data yet.</span>
-            ) : (
-              <AnimatedNumber value={complianceRate} suffix="%" />
+          <SpotlightCard className={`rounded-xl p-4 ${cardHover}`} glowColor="rgba(34, 197, 94, 0.3)">
+            {tab === "log" && <WasteLogSection records={records} error={recordsError} />}
+            {tab === "recommendations" && (
+              <RecommendationsSection recommendations={recommendations} error={recommendationsError} />
             )}
-          </p>
-        </SpotlightCard>
-        </motion.div>
-
-        <motion.div
-          initial={reduceMotion ? undefined : { opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.1, ease: "easeOut" }}
-        >
-        <SpotlightCard className={`rounded-xl p-4 ${cardHover}`} glowColor="rgba(34, 197, 94, 0.3)">
-          <h2 className="mb-4 text-sm font-semibold text-zinc-600 dark:text-zinc-400">
-            Current recommendations
-          </h2>
-          {recommendations === null ? (
-            <RecommendationsSkeleton />
-          ) : recommendations.length === 0 ? (
-            <p className="py-8 text-center text-sm text-zinc-500">No recommendations yet.</p>
-          ) : (
-            <motion.ul
-              className="flex flex-col gap-3"
-              initial="hidden"
-              animate="visible"
-              variants={{
-                visible: { transition: { staggerChildren: reduceMotion ? 0 : 0.08 } },
-              }}
-            >
-              {recommendations.map((rec) => (
-                <motion.li
-                  key={rec.id}
-                  variants={{
-                    hidden: reduceMotion ? { opacity: 1, y: 0 } : { opacity: 0, y: 10 },
-                    visible: { opacity: 1, y: 0 },
-                  }}
-                  transition={{ duration: 0.3, ease: "easeOut" }}
-                  className={`rounded-md border border-zinc-200 px-3 py-2 text-sm dark:border-zinc-800 ${cardHover}`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="flex items-center gap-2">
-                      <span className="font-medium capitalize">{rec.meal_type}</span>
-                      <MethodBadge method={rec.method} />
-                    </span>
-                    <span className="text-xs text-zinc-500">
-                      {new Date(rec.generated_at).toLocaleDateString()}
-                    </span>
-                  </div>
-                  <p className="text-zinc-700 dark:text-zinc-300">{rec.message}</p>
-                  {rec.suggested_adjustment_pct !== null && (
-                    <p className="text-xs text-zinc-500">
-                      Suggested adjustment: {rec.suggested_adjustment_pct}%
-                    </p>
-                  )}
-                </motion.li>
-              ))}
-            </motion.ul>
-          )}
-        </SpotlightCard>
+            {tab === "graph" && (
+              <WasteGraphSection
+                chartData={chartData}
+                hasRecords={(records?.length ?? 0) > 0}
+                loading={records === null}
+                error={recordsError}
+              />
+            )}
+          </SpotlightCard>
         </motion.div>
       </main>
     </div>
