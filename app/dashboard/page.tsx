@@ -3,9 +3,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  Area,
+  AreaChart,
   CartesianGrid,
-  Line,
-  LineChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -15,6 +15,7 @@ import { animate, motion, useMotionValue, useReducedMotion } from "framer-motion
 import { supabase } from "@/lib/supabase";
 import { getCurrentProfile, type Profile } from "@/lib/profile";
 import AppHeader from "@/app/components/AppHeader";
+import SpotlightCard from "@/app/components/SpotlightCard";
 
 const DAYS = 14;
 
@@ -289,12 +290,12 @@ export default function DashboardPage() {
           </p>
         )}
 
-        <motion.section
+        <motion.div
           initial={reduceMotion ? undefined : { opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, ease: "easeOut" }}
-          className={`rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 ${cardHover}`}
         >
+        <SpotlightCard className={`rounded-xl p-4 ${cardHover}`} glowColor="rgba(34, 197, 94, 0.3)">
           <h2 className="mb-4 text-sm font-semibold text-zinc-600 dark:text-zinc-400">
             Total waste (kg) — last {DAYS} days
           </h2>
@@ -306,32 +307,40 @@ export default function DashboardPage() {
             </p>
           ) : (
             <ResponsiveContainer width="100%" height={280}>
-              <LineChart data={chartData}>
+              <AreaChart data={chartData}>
+                <defs>
+                  <linearGradient id="wasteFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#16a34a" stopOpacity={0.45} />
+                    <stop offset="95%" stopColor="#16a34a" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
                 <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
                 <XAxis dataKey="date" fontSize={12} />
                 <YAxis fontSize={12} width={40} />
                 <Tooltip />
-                <Line
+                <Area
                   type="monotone"
                   dataKey="totalKg"
                   stroke="#16a34a"
                   strokeWidth={2}
+                  fill="url(#wasteFill)"
                   dot={false}
                   isAnimationActive={!reduceMotion}
                   animationDuration={900}
                   animationEasing="ease-out"
                 />
-              </LineChart>
+              </AreaChart>
             </ResponsiveContainer>
           )}
-        </motion.section>
+        </SpotlightCard>
+        </motion.div>
 
-        <motion.section
+        <motion.div
           initial={reduceMotion ? undefined : { opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.05, ease: "easeOut" }}
-          className={`rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 ${cardHover}`}
         >
+        <SpotlightCard className={`rounded-xl p-4 ${cardHover}`} glowColor="rgba(34, 197, 94, 0.3)">
           <h2 className="mb-2 text-sm font-semibold text-zinc-600 dark:text-zinc-400">
             Recommendation compliance rate
           </h2>
@@ -342,14 +351,15 @@ export default function DashboardPage() {
               <AnimatedNumber value={complianceRate} suffix="%" />
             )}
           </p>
-        </motion.section>
+        </SpotlightCard>
+        </motion.div>
 
-        <motion.section
+        <motion.div
           initial={reduceMotion ? undefined : { opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.1, ease: "easeOut" }}
-          className={`rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 ${cardHover}`}
         >
+        <SpotlightCard className={`rounded-xl p-4 ${cardHover}`} glowColor="rgba(34, 197, 94, 0.3)">
           <h2 className="mb-4 text-sm font-semibold text-zinc-600 dark:text-zinc-400">
             Current recommendations
           </h2>
@@ -395,7 +405,8 @@ export default function DashboardPage() {
               ))}
             </motion.ul>
           )}
-        </motion.section>
+        </SpotlightCard>
+        </motion.div>
       </main>
     </div>
   );

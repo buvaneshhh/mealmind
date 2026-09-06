@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { supabase } from "@/lib/supabase";
 import { ensureUserProfile, type Role } from "@/lib/profile";
+import SpotlightCard from "@/app/components/SpotlightCard";
 
 type Hostel = { id: string; name: string };
 type Mode = "login" | "signup";
@@ -28,6 +29,13 @@ function AnimatedBackground() {
         animate={reduceMotion ? undefined : { x: [0, -50, 0], y: [0, -30, 0] }}
         transition={{ duration: 26, repeat: Infinity, ease: "easeInOut" }}
       />
+      <motion.div
+        className="absolute left-1/2 top-1/2 h-80 w-80 -translate-x-1/2 -translate-y-1/2 rounded-full bg-teal-300/20 blur-3xl dark:bg-teal-500/10"
+        animate={reduceMotion ? undefined : { rotate: 360 }}
+        transition={{ duration: 40, repeat: Infinity, ease: "linear" }}
+        style={{ transformOrigin: "40% 60%" }}
+      />
+      <div className="grain-overlay" />
     </div>
   );
 }
@@ -136,8 +144,9 @@ export default function LoginPage() {
         initial={reduceMotion ? undefined : { opacity: 0, y: 24 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, ease: "easeOut" }}
-        className="relative z-10 w-full max-w-sm rounded-xl border border-zinc-200 bg-white/90 p-6 shadow-lg backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-950/90"
+        className="relative z-10 w-full max-w-sm"
       >
+      <SpotlightCard className="rounded-xl p-6 shadow-xl">
         <h1 className="mb-1 text-2xl font-semibold">MealMind</h1>
         <p className="mb-6 text-sm text-zinc-500">Track and reduce mess food waste.</p>
 
@@ -275,7 +284,7 @@ export default function LoginPage() {
             whileTap={reduceMotion ? undefined : { scale: 0.97 }}
             type="submit"
             disabled={loading || (mode === "signup" && hostels.length === 0)}
-            className="relative overflow-hidden rounded-md bg-green-600 py-2 text-sm font-medium text-white transition-colors hover:bg-green-700 disabled:opacity-50"
+            className="shine-sweep relative overflow-hidden rounded-md bg-green-600 py-2 text-sm font-medium text-white shadow-lg shadow-green-600/30 transition-colors hover:bg-green-700 disabled:opacity-50"
           >
             <AnimatePresence mode="wait" initial={false}>
               {loading ? (
@@ -306,6 +315,7 @@ export default function LoginPage() {
             </AnimatePresence>
           </motion.button>
         </form>
+      </SpotlightCard>
       </motion.div>
     </div>
   );

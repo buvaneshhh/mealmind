@@ -6,6 +6,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { supabase } from "@/lib/supabase";
 import { getCurrentProfile, type Profile } from "@/lib/profile";
 import AppHeader from "@/app/components/AppHeader";
+import SpotlightCard from "@/app/components/SpotlightCard";
 
 type MealType = "breakfast" | "lunch" | "dinner";
 
@@ -156,13 +157,13 @@ export default function LogWastePage() {
       <AppHeader title="Log Waste" subtitle={profile?.email} />
 
       <main className="mx-auto w-full max-w-md flex-1 px-4 py-8">
-        <motion.form
+        <motion.div
           initial={reduceMotion ? undefined : { opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, ease: "easeOut" }}
-          onSubmit={handleSubmit}
-          className="flex flex-col gap-4 rounded-xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-950"
         >
+        <SpotlightCard className="rounded-xl p-6 shadow-sm" glowColor="rgba(34, 197, 94, 0.32)">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1 text-sm">
             Meal
             <div className="relative flex rounded-lg bg-zinc-100 p-1 text-sm font-medium dark:bg-zinc-900">
@@ -255,7 +256,7 @@ export default function LogWastePage() {
             whileTap={reduceMotion ? undefined : { scale: 0.97 }}
             type="submit"
             disabled={submitting}
-            className="rounded-md bg-green-600 py-2 text-sm font-medium text-white transition-colors hover:bg-green-700 disabled:opacity-50"
+            className="shine-sweep relative overflow-hidden rounded-md bg-green-600 py-2 text-sm font-medium text-white shadow-lg shadow-green-600/30 transition-colors hover:bg-green-700 disabled:opacity-50"
           >
             <AnimatePresence mode="wait" initial={false}>
               {submitting ? (
@@ -285,7 +286,9 @@ export default function LogWastePage() {
               )}
             </AnimatePresence>
           </motion.button>
-        </motion.form>
+        </form>
+        </SpotlightCard>
+        </motion.div>
       </main>
     </div>
   );
