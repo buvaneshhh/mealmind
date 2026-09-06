@@ -11,6 +11,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { animate, motion, useMotionValue, useReducedMotion } from "framer-motion";
 import { supabase } from "@/lib/supabase";
 import { getCurrentProfile, type Profile } from "@/lib/profile";
 import AppHeader from "@/app/components/AppHeader";
@@ -86,8 +87,98 @@ async function fetchRecommendations(hostelId: string): Promise<Recommendation[]>
   return res.data as Recommendation[];
 }
 
+function AnimatedNumber({ value, suffix = "" }: { value: number; suffix?: string }) {
+  const reduceMotion = useReducedMotion();
+  const [display, setDisplay] = useState(0);
+  const motionVal = useMotionValue(0);
+
+  useEffect(() => {
+    if (reduceMotion) return;
+    const controls = animate(motionVal, value, {
+      duration: 0.8,
+      ease: "easeOut",
+      onUpdate: (v) => setDisplay(Math.round(v)),
+    });
+    return controls.stop;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, reduceMotion]);
+
+  return (
+    <>
+      {reduceMotion ? value : display}
+      {suffix}
+    </>
+  );
+}
+
+function RuleBasedIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" className="h-3 w-3">
+      <path
+        d="M4 6h12M4 10h8M4 14h5"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function RegressionIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" className="h-3 w-3">
+      <path
+        d="M3 14l4.5-5 3.5 3 5.5-7"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M13 5h4v4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function MethodBadge({ method }: { method: Recommendation["method"] }) {
+  if (!method) return null;
+  const isRegression = method === "regression";
+  return (
+    <span
+      className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${
+        isRegression
+          ? "bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300"
+          : "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
+      }`}
+    >
+      {isRegression ? <RegressionIcon /> : <RuleBasedIcon />}
+      {isRegression ? "Regression" : "Rule-based"}
+    </span>
+  );
+}
+
+function ChartSkeleton() {
+  return (
+    <div className="flex h-[280px] flex-col justify-end gap-2 px-2 pb-2">
+      <div className="skeleton h-full w-full rounded-md" />
+    </div>
+  );
+}
+
+function RecommendationsSkeleton() {
+  return (
+    <div className="flex flex-col gap-3">
+      {[0, 1, 2].map((i) => (
+        <div key={i} className="skeleton h-16 w-full rounded-md" />
+      ))}
+    </div>
+  );
+}
+
+const cardHover = "transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-md";
+
 export default function DashboardPage() {
   const router = useRouter();
+  const reduceMotion = useReducedMotion();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
 
@@ -188,7 +279,7 @@ export default function DashboardPage() {
       : null;
 
   return (
-    <div className="flex flex-1 flex-col bg-zinc-50 dark:bg-black">
+    <div className="flex flex-1 flex-col">
       <AppHeader title="Dashboard" subtitle={profile?.email} />
 
       <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-6 px-4 py-8">
@@ -198,12 +289,17 @@ export default function DashboardPage() {
           </p>
         )}
 
-        <section className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+        <motion.section
+          initial={reduceMotion ? undefined : { opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, ease: "easeOut" }}
+          className={`rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 ${cardHover}`}
+        >
           <h2 className="mb-4 text-sm font-semibold text-zinc-600 dark:text-zinc-400">
             Total waste (kg) — last {DAYS} days
           </h2>
           {records === null ? (
-            <p className="py-16 text-center text-sm text-zinc-500">Loading chart…</p>
+            <ChartSkeleton />
           ) : records.length === 0 ? (
             <p className="py-16 text-center text-sm text-zinc-500">
               No waste records yet for the last {DAYS} days.
@@ -215,13 +311,27 @@ export default function DashboardPage() {
                 <XAxis dataKey="date" fontSize={12} />
                 <YAxis fontSize={12} width={40} />
                 <Tooltip />
-                <Line type="monotone" dataKey="totalKg" stroke="#16a34a" strokeWidth={2} dot={false} />
+                <Line
+                  type="monotone"
+                  dataKey="totalKg"
+                  stroke="#16a34a"
+                  strokeWidth={2}
+                  dot={false}
+                  isAnimationActive={!reduceMotion}
+                  animationDuration={900}
+                  animationEasing="ease-out"
+                />
               </LineChart>
             </ResponsiveContainer>
           )}
-        </section>
+        </motion.section>
 
-        <section className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+        <motion.section
+          initial={reduceMotion ? undefined : { opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.05, ease: "easeOut" }}
+          className={`rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 ${cardHover}`}
+        >
           <h2 className="mb-2 text-sm font-semibold text-zinc-600 dark:text-zinc-400">
             Recommendation compliance rate
           </h2>
@@ -229,34 +339,47 @@ export default function DashboardPage() {
             {complianceRate === null ? (
               <span className="text-base font-normal text-zinc-500">No compliance data yet.</span>
             ) : (
-              `${complianceRate}%`
+              <AnimatedNumber value={complianceRate} suffix="%" />
             )}
           </p>
-        </section>
+        </motion.section>
 
-        <section className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+        <motion.section
+          initial={reduceMotion ? undefined : { opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.1, ease: "easeOut" }}
+          className={`rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 ${cardHover}`}
+        >
           <h2 className="mb-4 text-sm font-semibold text-zinc-600 dark:text-zinc-400">
             Current recommendations
           </h2>
           {recommendations === null ? (
-            <p className="py-8 text-center text-sm text-zinc-500">Loading recommendations…</p>
+            <RecommendationsSkeleton />
           ) : recommendations.length === 0 ? (
             <p className="py-8 text-center text-sm text-zinc-500">No recommendations yet.</p>
           ) : (
-            <ul className="flex flex-col gap-3">
+            <motion.ul
+              className="flex flex-col gap-3"
+              initial="hidden"
+              animate="visible"
+              variants={{
+                visible: { transition: { staggerChildren: reduceMotion ? 0 : 0.08 } },
+              }}
+            >
               {recommendations.map((rec) => (
-                <li
+                <motion.li
                   key={rec.id}
-                  className="rounded-md border border-zinc-200 px-3 py-2 text-sm dark:border-zinc-800"
+                  variants={{
+                    hidden: reduceMotion ? { opacity: 1, y: 0 } : { opacity: 0, y: 10 },
+                    visible: { opacity: 1, y: 0 },
+                  }}
+                  transition={{ duration: 0.3, ease: "easeOut" }}
+                  className={`rounded-md border border-zinc-200 px-3 py-2 text-sm dark:border-zinc-800 ${cardHover}`}
                 >
                   <div className="flex items-center justify-between">
                     <span className="flex items-center gap-2">
                       <span className="font-medium capitalize">{rec.meal_type}</span>
-                      {rec.method && (
-                        <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
-                          {rec.method === "regression" ? "Regression" : "Rule-based"}
-                        </span>
-                      )}
+                      <MethodBadge method={rec.method} />
                     </span>
                     <span className="text-xs text-zinc-500">
                       {new Date(rec.generated_at).toLocaleDateString()}
@@ -268,11 +391,11 @@ export default function DashboardPage() {
                       Suggested adjustment: {rec.suggested_adjustment_pct}%
                     </p>
                   )}
-                </li>
+                </motion.li>
               ))}
-            </ul>
+            </motion.ul>
           )}
-        </section>
+        </motion.section>
       </main>
     </div>
   );
