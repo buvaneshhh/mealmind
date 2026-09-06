@@ -30,6 +30,7 @@ type Recommendation = {
   message: string;
   suggested_adjustment_pct: number | null;
   generated_at: string;
+  method: "rule_based" | "regression" | null;
 };
 
 type ChartPoint = { date: string; totalKg: number };
@@ -56,6 +57,35 @@ function buildChartPoints(records: WasteRecord[]): ChartPoint[] {
   }));
 }
 
+const RECOMMENDATION_COLUMNS = "id,meal_type,message,suggested_adjustment_pct,generated_at,method";
+const RECOMMENDATION_COLUMNS_FALLBACK = "id,meal_type,message,suggested_adjustment_pct,generated_at";
+// ponytail: Supabase has an open platform incident where PostgREST's
+// schema cache doesn't always know about a very recently added column
+// (here: `method`) yet — fall back to the columns that have always
+// worked rather than breaking the whole recommendations panel over it.
+const SCHEMA_CACHE_ERROR_CODES = ["42703", "PGRST204"];
+
+async function fetchRecommendations(hostelId: string): Promise<Recommendation[]> {
+  const res = await supabase
+    .from("recommendations")
+    .select(RECOMMENDATION_COLUMNS)
+    .eq("hostel_id", hostelId)
+    .order("generated_at", { ascending: false });
+
+  if (res.error && SCHEMA_CACHE_ERROR_CODES.includes(res.error.code)) {
+    const fallback = await supabase
+      .from("recommendations")
+      .select(RECOMMENDATION_COLUMNS_FALLBACK)
+      .eq("hostel_id", hostelId)
+      .order("generated_at", { ascending: false });
+    if (fallback.error) throw fallback.error;
+    return fallback.data.map((r) => ({ ...r, method: null })) as Recommendation[];
+  }
+
+  if (res.error) throw res.error;
+  return res.data as Recommendation[];
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -69,25 +99,20 @@ export default function DashboardPage() {
     const since = new Date();
     since.setDate(since.getDate() - (DAYS - 1));
 
-    const [recordsRes, recsRes] = await Promise.all([
+    const [recordsRes, recommendations] = await Promise.all([
       supabase
         .from("waste_records")
         .select("timestamp,kitchen_waste_kg,plate_waste_kg,compliance_met")
         .eq("hostel_id", hostelId)
         .gte("timestamp", since.toISOString())
         .order("timestamp", { ascending: true }),
-      supabase
-        .from("recommendations")
-        .select("id,meal_type,message,suggested_adjustment_pct,generated_at")
-        .eq("hostel_id", hostelId)
-        .order("generated_at", { ascending: false }),
+      fetchRecommendations(hostelId),
     ]);
 
     if (recordsRes.error) throw recordsRes.error;
-    if (recsRes.error) throw recsRes.error;
 
     setRecords(recordsRes.data as WasteRecord[]);
-    setRecommendations(recsRes.data as Recommendation[]);
+    setRecommendations(recommendations);
   }, []);
 
   useEffect(() => {
@@ -225,7 +250,14 @@ export default function DashboardPage() {
                   className="rounded-md border border-zinc-200 px-3 py-2 text-sm dark:border-zinc-800"
                 >
                   <div className="flex items-center justify-between">
-                    <span className="font-medium capitalize">{rec.meal_type}</span>
+                    <span className="flex items-center gap-2">
+                      <span className="font-medium capitalize">{rec.meal_type}</span>
+                      {rec.method && (
+                        <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
+                          {rec.method === "regression" ? "Regression" : "Rule-based"}
+                        </span>
+                      )}
+                    </span>
                     <span className="text-xs text-zinc-500">
                       {new Date(rec.generated_at).toLocaleDateString()}
                     </span>

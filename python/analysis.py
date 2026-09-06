@@ -19,14 +19,26 @@ static, one-shot recommendations):
    something that didn't matter); if it improved, tightened. Not complied
    with -> left unchanged, since we have no signal on whether the target
    itself was reasonable.
+
+Recommendation engine (kitchen waste only — plate waste is always
+rule-based, there's no regression target for it): a hostel+meal_type with
+regression_model.MIN_RECORDS_FOR_REGRESSION+ records of *all-time* history
+gets a regression_model.py prediction instead of the 14-day rolling
+average; below that, the rule-based thresholds below still apply. Every
+recommendation is tagged with which engine produced it (`method` column)
+so the dashboard and report can compare the two side by side.
 """
 
 import os
+import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pandas as pd
+from postgrest.exceptions import APIError
 from supabase import Client, create_client
+
+import regression_model
 
 KITCHEN_WASTE_THRESHOLD_KG = 10
 PLATE_WASTE_THRESHOLD_KG = 1.5
@@ -65,22 +77,39 @@ def latest_kitchen_rec(hostel_id: str, meal_type: str, before: str | None, kitch
     return max(candidates, key=lambda r: r["generated_at"], default=None)
 
 
-def tag_compliance(supabase: Client) -> list[dict]:
+def fetch_kitchen_recs(supabase: Client) -> list[dict]:
+    """Past kitchen-waste recommendations (the ones with a baseline +
+    suggested %, as opposed to plate-waste recs which have neither)."""
+    try:
+        return (
+            supabase.table("recommendations")
+            .select("id,hostel_id,meal_type,suggested_adjustment_pct,baseline_kitchen_avg_kg,generated_at")
+            .not_.is_("suggested_adjustment_pct", "null")
+            .not_.is_("baseline_kitchen_avg_kg", "null")
+            .execute()
+            .data
+        )
+    except APIError as e:
+        # ponytail: as of writing, Supabase has an open platform incident
+        # where PostgREST's schema cache doesn't always pick up new
+        # columns (baseline_kitchen_avg_kg here) — degrade to "no
+        # compliance/adjustment signal this run" rather than crash the
+        # whole script.
+        print(f"Kitchen recommendation history unavailable (schema not ready yet): {e.message}")
+        return []
+
+
+def tag_compliance(supabase: Client, kitchen_recs: list[dict]) -> list[dict]:
     """Tags untagged waste_records against the kitchen recommendation active
     when they were logged. Returns the tagging results for use in this run's
     threshold adjustment (rec_id -> whether that record complied)."""
+    if not kitchen_recs:
+        return []
+
     untagged = (
         supabase.table("waste_records")
         .select("id,hostel_id,meal_type,kitchen_waste_kg,timestamp")
         .is_("compliance_met", "null")
-        .execute()
-        .data
-    )
-    kitchen_recs = (
-        supabase.table("recommendations")
-        .select("id,hostel_id,meal_type,suggested_adjustment_pct,baseline_kitchen_avg_kg,generated_at")
-        .not_.is_("suggested_adjustment_pct", "null")
-        .not_.is_("baseline_kitchen_avg_kg", "null")
         .execute()
         .data
     )
@@ -119,19 +148,35 @@ def threshold_adjustment(
     return ADJUSTMENT_STEP_PCT if improved else -ADJUSTMENT_STEP_PCT
 
 
-def build_recommendations(records: list[dict], kitchen_recs: list[dict], tagging_results: list[dict]) -> list[dict]:
+def build_recommendations(
+    records: list[dict], full_history: list[dict], kitchen_recs: list[dict], tagging_results: list[dict]
+) -> list[dict]:
     if not records:
         return []
 
     df = pd.DataFrame(records)
     grouped = df.groupby(["hostel_id", "meal_type"])
+    history_df = (
+        pd.DataFrame(full_history) if full_history else pd.DataFrame(columns=["hostel_id", "meal_type"])
+    )
 
     recommendations = []
     for (hostel_id, meal_type), group in grouped:
         avg_kitchen = float(group["kitchen_waste_kg"].mean())
         avg_plate = float(group["plate_waste_kg"].mean())
 
-        if avg_kitchen > KITCHEN_WASTE_THRESHOLD_KG:
+        group_history = history_df[
+            (history_df["hostel_id"] == hostel_id) & (history_df["meal_type"] == meal_type)
+        ]
+
+        if len(group_history) >= regression_model.MIN_RECORDS_FOR_REGRESSION:
+            # Enough all-time history to trust the regression model's
+            # judgment over the simpler 14-day average — including its
+            # judgment that no recommendation is needed right now.
+            reg_rec = regression_model.predict_recommendation(hostel_id, meal_type, group_history.to_dict("records"))
+            if reg_rec is not None:
+                recommendations.append(reg_rec)
+        elif avg_kitchen > KITCHEN_WASTE_THRESHOLD_KG:
             # ponytail: linear heuristic (10% reduction per 10kg over
             # threshold), nudged by threshold_adjustment() and capped —
             # refine against real compliance-rate feedback as it accumulates.
@@ -148,6 +193,7 @@ def build_recommendations(records: list[dict], kitchen_recs: list[dict], tagging
                 ),
                 "suggested_adjustment_pct": -reduction_pct,
                 "baseline_kitchen_avg_kg": avg_kitchen,
+                "method": "rule_based",
             })
 
         if avg_plate > PLATE_WASTE_THRESHOLD_KG:
@@ -163,16 +209,40 @@ def build_recommendations(records: list[dict], kitchen_recs: list[dict], tagging
                 ),
                 "suggested_adjustment_pct": None,
                 "baseline_kitchen_avg_kg": None,
+                "method": "rule_based",
             })
 
     return recommendations
+
+
+def insert_recommendations(supabase: Client, recommendations: list[dict]) -> None:
+    """Inserts recommendations, stripping any column PostgREST's schema
+    cache doesn't know about yet and retrying — see the ponytail note on
+    fetch_kitchen_recs about the ongoing Supabase platform incident.
+    Whatever's left after stripping is exactly what the already-working
+    rule-based path always inserted, so it keeps working regardless."""
+    pending = [dict(r) for r in recommendations]
+    for _ in range(4):  # a handful of recently-added columns, generously
+        try:
+            supabase.table("recommendations").insert(pending).execute()
+            return
+        except APIError as e:
+            match = re.search(r"'(\w+)' column", e.message)
+            if not match:
+                raise
+            missing_col = match.group(1)
+            print(f"'{missing_col}' column not available yet (schema cache) — inserting without it.")
+            for r in pending:
+                r.pop(missing_col, None)
+    raise RuntimeError("Too many missing columns when inserting recommendations — check the schema cache.")
 
 
 def main() -> None:
     env = load_env(Path(__file__).resolve().parent.parent / ".env")
     supabase: Client = create_client(env["SUPABASE_URL"], env["SUPABASE_SERVICE_ROLE_KEY"])
 
-    tagging_results = tag_compliance(supabase)
+    kitchen_recs = fetch_kitchen_recs(supabase)
+    tagging_results = tag_compliance(supabase, kitchen_recs)
 
     since = (datetime.now(timezone.utc) - timedelta(days=14)).isoformat()
     result = (
@@ -181,19 +251,16 @@ def main() -> None:
         .gte("timestamp", since)
         .execute()
     )
-    kitchen_recs = (
-        supabase.table("recommendations")
-        .select("id,hostel_id,meal_type,suggested_adjustment_pct,baseline_kitchen_avg_kg,generated_at")
-        .not_.is_("suggested_adjustment_pct", "null")
-        .not_.is_("baseline_kitchen_avg_kg", "null")
-        .execute()
-        .data
+    # Regression needs more history than the 14-day rolling window the
+    # rule-based thresholds use, so it gets its own unfiltered query.
+    full_history = (
+        supabase.table("waste_records").select("hostel_id,meal_type,kitchen_waste_kg,timestamp").execute().data
     )
 
-    recommendations = build_recommendations(result.data, kitchen_recs, tagging_results)
+    recommendations = build_recommendations(result.data, full_history, kitchen_recs, tagging_results)
 
     if recommendations:
-        supabase.table("recommendations").insert(recommendations).execute()
+        insert_recommendations(supabase, recommendations)
 
     print(f"Tagged compliance on {len(tagging_results)} waste record(s).")
     print(f"Analyzed {len(result.data)} waste record(s) from the last 14 days.")
@@ -202,7 +269,7 @@ def main() -> None:
     else:
         print(f"Generated {len(recommendations)} recommendation(s):")
         for rec in recommendations:
-            print(f"  [{rec['meal_type']}] {rec['message']}")
+            print(f"  [{rec['meal_type']}] ({rec.get('method', 'unknown')}) {rec['message']}")
 
 
 if __name__ == "__main__":
