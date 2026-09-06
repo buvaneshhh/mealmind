@@ -1,0 +1,22 @@
+name: Run waste analysis
+
+on:
+  schedule:
+    # Daily at 03:00 UTC — after the day's meals are logged, before most
+    # admins check the dashboard in the morning.
+    - cron: "0 3 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r python/requirements.txt
+      - run: python python/analysis.py
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
