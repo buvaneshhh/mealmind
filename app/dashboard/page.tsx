@@ -6,7 +6,6 @@ import { motion, useReducedMotion } from "framer-motion";
 import { supabase } from "@/lib/supabase";
 import { getCurrentProfile, type Profile } from "@/lib/profile";
 import AppHeader from "@/app/components/AppHeader";
-import SpotlightCard from "@/app/components/SpotlightCard";
 import DashboardTabs, { type DashboardTab } from "./components/DashboardTabs";
 import OverviewCards from "./components/OverviewCards";
 import WasteLogSection from "./components/WasteLogSection";
@@ -17,7 +16,6 @@ import { buildChartPoints } from "./utils";
 import type { Recommendation, WasteRecord } from "./types";
 
 const DAYS = 14;
-const cardHover = "transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-md";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -171,7 +169,11 @@ export default function DashboardPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3, ease: "easeOut" }}
         >
-          <SpotlightCard className={`rounded-xl p-4 ${cardHover}`} glowColor="rgba(34, 197, 94, 0.3)">
+          {/* Plain glass card, not SpotlightCard: its cursor-tracking glow is
+              sized to the whole card, which for a long scrollable table
+              reads as a stray glow floating over the rows instead of
+              following the cursor cleanly. */}
+          <div className="glass-card rounded-xl p-4">
             {tab === "log" && <WasteLogSection records={records} error={recordsError} />}
             {tab === "recommendations" && (
               <RecommendationsSection recommendations={recommendations} error={recommendationsError} />
@@ -184,7 +186,7 @@ export default function DashboardPage() {
                 error={recordsError}
               />
             )}
-          </SpotlightCard>
+          </div>
         </motion.div>
       </main>
     </div>
