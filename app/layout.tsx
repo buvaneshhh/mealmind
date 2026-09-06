@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import PageTransition from "./components/PageTransition";
 import RegisterSW from "./register-sw";
 
 const geistSans = Geist({
@@ -28,6 +29,7 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: "#16a34a",
+  colorScheme: "light dark",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
@@ -37,7 +39,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        {children}
+        <PageTransition>{children}</PageTransition>
         <RegisterSW />
       </body>
     </html>
