@@ -37,7 +37,10 @@ def get_or_create_synthetic_hostel(supabase: Client) -> str:
     existing = supabase.table("hostels").select("id").eq("name", SYNTHETIC_HOSTEL_NAME).execute().data
     if existing:
         return existing[0]["id"]
-    created = supabase.table("hostels").insert({"name": SYNTHETIC_HOSTEL_NAME}).execute().data
+    # is_test=True keeps this out of the real signup hostel picker — it
+    # still has to be a genuine row here because waste_records.hostel_id
+    # has a foreign key into this table.
+    created = supabase.table("hostels").insert({"name": SYNTHETIC_HOSTEL_NAME, "is_test": True}).execute().data
     return created[0]["id"]
 
 

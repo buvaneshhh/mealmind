@@ -35,9 +35,26 @@ export default function LoginPage() {
     supabase
       .from("hostels")
       .select("id,name")
+      .eq("is_test", false)
       .order("name")
       .then(({ data, error }) => {
-        if (!error && data) setHostels(data);
+        if (!error && data) {
+          setHostels(data);
+          return;
+        }
+        // ponytail: Supabase has an open platform incident where
+        // PostgREST's schema cache doesn't always know about a very
+        // recently added column (`is_test`) yet — fall back to showing
+        // every hostel rather than breaking signup entirely over it.
+        if (error?.code === "42703" || error?.code === "PGRST204") {
+          supabase
+            .from("hostels")
+            .select("id,name")
+            .order("name")
+            .then(({ data, error }) => {
+              if (!error && data) setHostels(data);
+            });
+        }
       });
   }, [router]);
 
