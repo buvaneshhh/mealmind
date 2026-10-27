@@ -15,7 +15,11 @@ import { fetchRecommendations, fetchWasteRecordCount, fetchWasteRecords } from "
 import { buildChartPoints } from "./utils";
 import type { Recommendation, WasteRecord } from "./types";
 
-const DAYS = 14;
+const RANGES = [
+  { days: 14, label: "14 days" },
+  { days: 90, label: "90 days" },
+  { days: 365, label: "1 year" },
+];
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -23,6 +27,7 @@ export default function DashboardPage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [tab, setTab] = useState<DashboardTab>("log");
+  const [days, setDays] = useState(RANGES[0].days);
 
   const [records, setRecords] = useState<WasteRecord[] | null>(null);
   const [recordsError, setRecordsError] = useState<string | null>(null);
@@ -33,9 +38,9 @@ export default function DashboardPage() {
   // Each source tracks its own error so one failing query never blocks the
   // others, and each section can tell "genuinely empty" apart from "failed
   // to load" instead of hanging on a loading state forever.
-  const loadData = useCallback(async (hostelId: string) => {
+  const loadData = useCallback(async (hostelId: string, rangeDays: number) => {
     const since = new Date();
-    since.setDate(since.getDate() - (DAYS - 1));
+    since.setDate(since.getDate() - (rangeDays - 1));
     const sinceIso = since.toISOString();
 
     const [recordsResult, recommendationsResult, countResult] = await Promise.allSettled([
@@ -79,9 +84,14 @@ export default function DashboardPage() {
       }
       setProfile(p);
       setCheckingAuth(false);
-      loadData(p.hostel_id);
+      loadData(p.hostel_id, RANGES[0].days);
     });
   }, [router, loadData]);
+
+  function changeRange(rangeDays: number) {
+    setDays(rangeDays);
+    if (profile) loadData(profile.hostel_id, rangeDays);
+  }
 
   // Supabase syncs sign-in/sign-out across every tab of the same origin
   // (e.g. testing as a student in another tab while this one is open as
@@ -120,7 +130,7 @@ export default function DashboardPage() {
         },
         (payload) => {
           console.log("[realtime] waste_records event received", payload);
-          loadData(profile.hostel_id);
+          loadData(profile.hostel_id, days);
         },
       )
       .on(
@@ -133,7 +143,7 @@ export default function DashboardPage() {
         },
         (payload) => {
           console.log("[realtime] recommendations event received", payload);
-          loadData(profile.hostel_id);
+          loadData(profile.hostel_id, days);
         },
       )
       .subscribe((status, err) => console.log("[realtime] channel status", status, err));
@@ -141,9 +151,9 @@ export default function DashboardPage() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [profile, loadData]);
+  }, [profile, loadData, days]);
 
-  const chartData = useMemo(() => (records ? buildChartPoints(records, DAYS) : []), [records]);
+  const chartData = useMemo(() => (records ? buildChartPoints(records, days) : []), [records, days]);
 
   if (checkingAuth) {
     return <p className="p-6 text-sm text-zinc-500">Loading…</p>;
@@ -161,6 +171,25 @@ export default function DashboardPage() {
           recommendations={recommendations}
         />
 
+        <div className="flex items-center justify-end gap-1 text-xs" role="group" aria-label="Date range">
+          <span className="mr-1 text-zinc-500">Range:</span>
+          {RANGES.map((r) => (
+            <button
+              key={r.days}
+              type="button"
+              aria-pressed={days === r.days}
+              onClick={() => changeRange(r.days)}
+              className={`rounded-md px-2.5 py-1 transition-colors ${
+                days === r.days
+                  ? "bg-zinc-200 font-medium text-black dark:bg-zinc-700 dark:text-white"
+                  : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+              }`}
+            >
+              {r.label}
+            </button>
+          ))}
+        </div>
+
         <DashboardTabs active={tab} onChange={setTab} />
 
         <motion.div
@@ -174,7 +203,7 @@ export default function DashboardPage() {
               reads as a stray glow floating over the rows instead of
               following the cursor cleanly. */}
           <div className="glass-card rounded-xl p-4">
-            {tab === "log" && <WasteLogSection records={records} error={recordsError} days={DAYS} />}
+            {tab === "log" && <WasteLogSection records={records} error={recordsError} days={days} />}
             {tab === "recommendations" && (
               <RecommendationsSection recommendations={recommendations} error={recommendationsError} />
             )}
