@@ -15,6 +15,8 @@ import { fetchRecommendations, fetchWasteRecordCount, fetchWasteRecords } from "
 import { buildChartPoints } from "./utils";
 import type { Recommendation, WasteRecord } from "./types";
 
+const DEFAULT_DAYS = 90;
+
 const RANGES = [
   { days: 14, label: "14 days" },
   { days: 90, label: "90 days" },
@@ -27,7 +29,7 @@ export default function DashboardPage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [tab, setTab] = useState<DashboardTab>("log");
-  const [days, setDays] = useState(RANGES[0].days);
+  const [days, setDays] = useState(DEFAULT_DAYS);
 
   const [records, setRecords] = useState<WasteRecord[] | null>(null);
   const [recordsError, setRecordsError] = useState<string | null>(null);
@@ -84,7 +86,7 @@ export default function DashboardPage() {
       }
       setProfile(p);
       setCheckingAuth(false);
-      loadData(p.hostel_id, RANGES[0].days);
+      loadData(p.hostel_id, DEFAULT_DAYS);
     });
   }, [router, loadData]);
 
