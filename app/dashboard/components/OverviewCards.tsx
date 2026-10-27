@@ -4,7 +4,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import SpotlightCard from "@/app/components/SpotlightCard";
 import AnimatedNumber from "./AnimatedNumber";
 import type { Recommendation, WasteRecord } from "../types";
-import { sumWasteKg, todayKey } from "../utils";
+import { dayKey, sumWasteKg, todayKey } from "../utils";
 
 const cardHover = "transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-md";
 
@@ -60,7 +60,7 @@ export default function OverviewCards({
 
   const weekAgo = new Date();
   weekAgo.setDate(weekAgo.getDate() - 6);
-  const weekAgoKey = weekAgo.toISOString().slice(0, 10);
+  const weekAgoKey = dayKey(weekAgo);
   const week = hasRecords ? sumWasteKg(records!, weekAgoKey) : null;
 
   const complianceRated = hasRecords ? records!.filter((r) => r.compliance_met !== null) : [];

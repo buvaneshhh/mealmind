@@ -52,12 +52,21 @@ function normalize(r: RawRecommendation): Recommendation {
   };
 }
 
+// analysis.py inserts each run as one batch, so a run's rows share a
+// generated_at; the slack only absorbs manual reruns close together.
+// ponytail: a run that produces zero recs leaves the previous run "active" —
+// needs a runs log or active flag (schema change) to fix properly.
+const RUN_WINDOW_MS = 60 * 60 * 1000;
+
 /** analysis.py re-inserts every day with no "active" flag, so only the
- * newest rec per (meal_type, method, kitchen-vs-plate) is current. Input is
- * newest-first, so the first one seen per key wins. */
+ * latest run's recs are current, newest per (meal_type, method,
+ * kitchen-vs-plate). Input is newest-first, so the first one seen per key wins. */
 function latestOnly(recs: Recommendation[]): Recommendation[] {
+  if (recs.length === 0) return recs;
+  const runStart = new Date(recs[0].generated_at).getTime() - RUN_WINDOW_MS;
   const seen = new Set<string>();
   return recs.filter((r) => {
+    if (new Date(r.generated_at).getTime() < runStart) return false;
     const key = `${r.meal_type}|${r.method}|${r.suggested_adjustment_pct === null ? "plate" : "kitchen"}`;
     if (seen.has(key)) return false;
     seen.add(key);
