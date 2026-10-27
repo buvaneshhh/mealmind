@@ -174,7 +174,7 @@ export default function DashboardPage() {
               reads as a stray glow floating over the rows instead of
               following the cursor cleanly. */}
           <div className="glass-card rounded-xl p-4">
-            {tab === "log" && <WasteLogSection records={records} error={recordsError} />}
+            {tab === "log" && <WasteLogSection records={records} error={recordsError} days={DAYS} />}
             {tab === "recommendations" && (
               <RecommendationsSection recommendations={recommendations} error={recommendationsError} />
             )}

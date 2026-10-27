@@ -12,7 +12,7 @@ export type WasteRecord = {
   users: { email: string } | null;
 };
 
-export type RecommendationMethod = "rule_based" | "regression" | null;
+export type RecommendationMethod = "rule_based" | "regression";
 
 export type Recommendation = {
   id: string;

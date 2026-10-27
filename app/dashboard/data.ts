@@ -36,6 +36,35 @@ const RECOMMENDATION_COLUMNS_FALLBACK = "id,meal_type,message,suggested_adjustme
 // worked rather than breaking the whole recommendations panel over it.
 const SCHEMA_CACHE_ERROR_CODES = ["42703", "PGRST204"];
 
+// regression_model.py prefixes its messages with this, so it doubles as the
+// method tag for rows where `method` is null (pre-migration rows, or rows
+// inserted while the schema cache hid the column).
+const REGRESSION_PREFIX = "[Regression model]";
+
+type RawRecommendation = Omit<Recommendation, "method"> & { method?: Recommendation["method"] | null };
+
+function normalize(r: RawRecommendation): Recommendation {
+  const isRegression = r.message.startsWith(REGRESSION_PREFIX);
+  return {
+    ...r,
+    method: r.method ?? (isRegression ? "regression" : "rule_based"),
+    message: isRegression ? r.message.slice(REGRESSION_PREFIX.length).trimStart() : r.message,
+  };
+}
+
+/** analysis.py re-inserts every day with no "active" flag, so only the
+ * newest rec per (meal_type, method, kitchen-vs-plate) is current. Input is
+ * newest-first, so the first one seen per key wins. */
+function latestOnly(recs: Recommendation[]): Recommendation[] {
+  const seen = new Set<string>();
+  return recs.filter((r) => {
+    const key = `${r.meal_type}|${r.method}|${r.suggested_adjustment_pct === null ? "plate" : "kitchen"}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 export async function fetchRecommendations(hostelId: string): Promise<Recommendation[]> {
   const res = await supabase
     .from("recommendations")
@@ -50,9 +79,9 @@ export async function fetchRecommendations(hostelId: string): Promise<Recommenda
       .eq("hostel_id", hostelId)
       .order("generated_at", { ascending: false });
     if (fallback.error) throw fallback.error;
-    return fallback.data.map((r) => ({ ...r, method: null })) as Recommendation[];
+    return latestOnly((fallback.data as RawRecommendation[]).map(normalize));
   }
 
   if (res.error) throw res.error;
-  return res.data as Recommendation[];
+  return latestOnly((res.data as RawRecommendation[]).map(normalize));
 }

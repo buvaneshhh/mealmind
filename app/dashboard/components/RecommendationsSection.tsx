@@ -27,13 +27,6 @@ function RegressionIcon() {
 }
 
 function MethodBadge({ method }: { method: Recommendation["method"] }) {
-  if (!method) {
-    return (
-      <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
-        Method unavailable
-      </span>
-    );
-  }
   const isRegression = method === "regression";
   return (
     <span

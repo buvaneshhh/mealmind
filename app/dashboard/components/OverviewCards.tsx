@@ -13,11 +13,13 @@ function Stat({
   value,
   suffix = "",
   index,
+  emptyText,
 }: {
   label: string;
   value: number | null;
   suffix?: string;
   index: number;
+  emptyText?: string;
 }) {
   const reduceMotion = useReducedMotion();
   return (
@@ -30,7 +32,9 @@ function Stat({
         <p className="mb-1 text-xs font-medium text-zinc-500 dark:text-zinc-400">{label}</p>
         <p className="text-2xl font-semibold">
           {value === null ? (
-            <span className="text-base font-normal text-zinc-400">—</span>
+            <span className={`font-normal text-zinc-400 ${emptyText ? "text-sm" : "text-base"}`}>
+              {emptyText ?? "—"}
+            </span>
           ) : (
             <AnimatedNumber value={value} suffix={suffix} />
           )}
@@ -69,8 +73,14 @@ export default function OverviewCards({
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
       <Stat label="Today's waste" value={today} suffix="kg" index={0} />
       <Stat label="This week" value={week} suffix="kg" index={1} />
-      <Stat label="Total records" value={totalRecordCount} index={2} />
-      <Stat label="Compliance rate" value={complianceRate} suffix="%" index={3} />
+      <Stat label="Total records (all time)" value={totalRecordCount} index={2} />
+      <Stat
+        label="Compliance rate"
+        value={complianceRate}
+        suffix="%"
+        index={3}
+        emptyText={hasRecords ? "Not enough data yet" : undefined}
+      />
       <Stat label="Active recommendations" value={recommendations?.length ?? null} index={4} />
     </div>
   );
